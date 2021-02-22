@@ -83,21 +83,11 @@ log_lik_theta_given_y = function(function_index, n, y) {
 }
 
 
-LL_M4 = function(param, y, n) {
-  
-  p_bar = exp(-tau * param[1])
-  
-  a = p_bar / param[2]
-  b = (1 - p_bar) / param[2]
-  
-  return(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
-           Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))
-}
 
 
 n = 20
 y = 3
-LL_M4 = function(alpha, phi, n, y) {
+LL_M4 = function(alpha, phi) {
   
   p_bar = exp(-tau * alpha)
   
@@ -115,4 +105,45 @@ LL_M4 = function(alpha, phi, n, y) {
 }
 
 stats4::mle((LL_M4), start = list(alpha = 1, phi = 1), method = "L-BFGS-B", 
-            lower = c(1e-10, 1e-10), upper = c(Inf, Inf), ...n = 3, y = 20)
+            lower = c(1e-10, 1e-10), upper = c(Inf, Inf))
+
+
+LL_M5 = function(alpha, beta, phi) {
+  
+  p_bar = exp(-tau * alpha / (1 + beta * y))
+  
+  a = p_bar / phi
+  b = (1 - p_bar) / phi
+  
+  # print(paste("a:", a, "b:", b, sep = " "))
+  # print(paste("alpha:", alpha, "phi:", phi, sep = "   "))
+  # 
+  # print(paste("Result:", -(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
+  #               Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))))
+  
+  return(-(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
+             Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b)))
+}
+
+stats4::mle((LL_M5), start = list(alpha = 1, beta =1, phi = 1), method = "L-BFGS-B", 
+            lower = c(1e-10, 1e-10, 1e-10), upper = c(Inf, Inf, Inf))
+
+LL_M6 = function(alpha, beta, phi) {
+  
+  p_bar = exp((-tau * alpha + beta * y) / (1 + exp(-tau * alpha + beta * y)))
+  
+  a = p_bar / phi
+  b = (1 - p_bar) / phi
+  
+  # print(paste("a:", a, "b:", b, sep = " "))
+  # print(paste("alpha:", alpha, "phi:", phi, sep = "   "))
+  # 
+  # print(paste("Result:", -(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
+  #               Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))))
+  
+  return(-(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
+             Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b)))
+}
+
+stats4::mle((LL_M6), start = list(alpha = 1, beta = 1, phi = 1), method = "L-BFGS-B", 
+            lower = c(1e-10, 1e-10, 1e-10), upper = c(Inf, Inf, Inf))
