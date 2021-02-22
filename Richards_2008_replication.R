@@ -97,22 +97,22 @@ LL_M4 = function(param, y, n) {
 
 n = 20
 y = 3
-LL_M4 = function(alpha, phi) {
+LL_M4 = function(alpha, phi, n, y) {
   
   p_bar = exp(-tau * alpha)
   
   a = p_bar / phi
   b = (1 - p_bar) / phi
   
-  print(paste("a:", a, "b:", b, sep = " "))
-  print(paste("alpha:", alpha, "phi:", phi, sep = "   "))
+  # print(paste("a:", a, "b:", b, sep = " "))
+  # print(paste("alpha:", alpha, "phi:", phi, sep = "   "))
+  # 
+  # print(paste("Result:", -(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
+  #               Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))))
   
-  
-  return(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
-           Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))
+  return(-(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
+           Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b)))
 }
 
-#stats::optim(c(0,0), fn = LL_M4, method="L-BFGS-B", lower=c(0,0), upper=rep(Inf,2), y = truth_set[1], n = num_perch)
-
 stats4::mle((LL_M4), start = list(alpha = 1, phi = 1), method = "L-BFGS-B", 
-            lower = c(1e-10, 1e-10), upper = c(Inf, Inf))
+            lower = c(1e-10, 1e-10), upper = c(Inf, Inf), ...n = 3, y = 20)
