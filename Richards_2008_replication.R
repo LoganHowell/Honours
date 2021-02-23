@@ -6,6 +6,7 @@ library(foreach)
 library(doParallel)
 library(parallel)
 library(stats4)
+library(fAsianOptions)
 
 # Binomial Example: 
 
@@ -15,10 +16,10 @@ kelp_bunches = seq(1:4) # The number of kelp bunches.
 tau = 15 # The duration of the experiment. 
 alpha = 0.075 # Pre-defined capture rate (per hour). 
 beta = 0.5 # The effectiveness of the kelp in mitigating perch capture. 
-num_truths = 10000 # The number of truth values to be generated. 
+num_truths = 500 # The number of truth values to be generated and which the models will be fit to (for each treatment). 
 num_perch = 20 # The number of prey fish in the tank. 
 phi = 0.1 # The pre-determined overdispersion factor. 
-Z = 10000 # The number of new points to use in calculation of cumulative IC. 
+Z = 500 # The number of new points to use in calculation of cumulative IC (for each treatment). 
 
 
 # Function for the true capture rate. 
@@ -61,12 +62,11 @@ for(i in 1:length(x))
 }
 
 
-
 # We remove the log of the combination choose(num_perch, y) within each of M1 - M3
 # as it is constant with respect to alpha in the maximisation of the log likelihood. 
 LL_M1 = function(alpha) {
   
-  return(-(-tau*alpha*y + (num_perch - y) * log(1 - exp(-tau*alpha))))
+  return(-(-tau * alpha * y + (num_perch - y) * log(1 - exp(-tau * alpha))))
 }
 
 
@@ -78,7 +78,7 @@ LL_M2 = function(alpha, beta) {
 
 LL_M3 = function(alpha, beta) {
   
-  numerator = exp(-tau*alpha + beta * y)
+  numerator = exp(-tau * alpha + beta * y)
   denominator = 1 + exp(-alpha * tau + beta * y)
   
   # print(paste("Numerator::", numerator, sep = "  "))
@@ -99,11 +99,11 @@ LL_M4 = function(alpha, phi) {
   # print(paste("a:", a, "b:", b, sep = " "))
   # print(paste("alpha:", alpha, "phi:", phi, sep = "   "))
   # 
-  # print(paste("Result:", -(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
-  #               Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))))
+  # print(paste("Result:", -(lgamma(n + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(n - y + b) - 
+  #               lgamma(y +  1) - lgamma(n - y + 1) - lgamma(a) - lgamma(b) - lgamma(n + a + b))))
   
-  return(-(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(num_perch - y + b) - 
-             Lgamma(y +  1) - Lgamma(num_perch - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(num_perch + a + b)))
+  return(-(lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(num_perch - y + b) - 
+             lgamma(y +  1) - lgamma(num_perch - y + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b)))
 }
 
 
@@ -117,16 +117,16 @@ LL_M5 = function(alpha, beta, phi) {
   # print(paste("a:", a, "b:", b, sep = " "))
   # print(paste("alpha:", alpha, "phi:", phi, sep = "   "))
   # 
-  # print(paste("Result:", -(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
-  #               Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))))
+  # print(paste("Result:", -(lgamma(n + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(n - y + b) - 
+  #               lgamma(y +  1) - lgamma(n - y + 1) - lgamma(a) - lgamma(b) - lgamma(n + a + b))))
   
-  return(-(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(num_perch - y + b) - 
-             Lgamma(y +  1) - Lgamma(num_perch - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(num_perch + a + b)))
+  return(-(lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(num_perch - y + b) - 
+             lgamma(y +  1) - lgamma(num_perch - y + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b)))
 }
 
 LL_M6 = function(alpha, beta, phi) {
   
-  p_bar = exp((-tau * alpha + beta * y) / (1 + exp(-tau * alpha + beta * y)))
+  p_bar = exp(-tau * alpha + beta * y) / (1 + exp(-tau * alpha + beta * y))
   
   a = p_bar / phi
   b = (1 - p_bar) / phi
@@ -134,14 +134,15 @@ LL_M6 = function(alpha, beta, phi) {
   # print(paste("p_bar:", p_bar))
   # print(paste("a:", a, "b:", b, sep = " "))
   # print(paste("alpha:", alpha, "phi:", phi, sep = " "))
-  # print(paste("Result:", -(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(num_perch - y + b) - 
-  #                            Lgamma(y +  1) - Lgamma(num_perch - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(num_perch + a + b))))
+  # print(paste("Result:", -(lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(num_perch - y + b) -
+  #                            lgamma(y +  1) - lgamma(num_perch - y + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b))))
   # print("")
   
   
-  return(-(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(num_perch - y + b) - 
-             Lgamma(y +  1) - Lgamma(num_perch - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(num_perch + a + b)))
+  return(-(lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(num_perch - y + b) - 
+             lgamma(y +  1) - lgamma(num_perch - y + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b)))
 }
+
 
 # Access method for optimised parameters:
 #opt_obj@details$par
@@ -156,34 +157,36 @@ for(i in 1:length(truth_set))
   print(i)
   
   # Fit each of the models using MLE:
-  
-  M1_fit = stats4::mle((LL_M1), start = list(alpha = 1), method = "L-BFGS-B", 
-                       lower = c(1e-12), upper = c(Inf))
-  
-  M2_fit = stats4::mle((LL_M2), start = list(alpha = 1, beta = 1), method = "L-BFGS-B", 
-                       lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
-  
-  if(y != 2 & y != 20)
+  if(y != 20 & y != 0)
   {
-    M3_fit = stats4::mle((LL_M3), start = list(alpha = 1, beta = 1), method = "L-BFGS-B", 
-                         lower = c(-Inf, -Inf), upper = c(Inf, Inf))
+    M1_fit = stats4::mle((LL_M1), start = list(alpha = 1), method = "L-BFGS-B", 
+                         lower = c(1e-3), upper = c(Inf))
   }
   
-  
-  if(y != 9)
-  {
-    M4_fit = stats4::mle((LL_M4), start = list(alpha = 1, phi = 1), method = "L-BFGS-B", 
-                         lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
-  }
-  
-  M5_fit = stats4::mle((LL_M5), start = list(alpha = 1, beta =1, phi = 1), method = "L-BFGS-B", 
-              lower = c(1e-12, 1e-12, 1e-12), upper = c(Inf, Inf, Inf))
-  
-  if(y != 5 & y != 15 & y != 18)
-  {
-    M6_fit = stats4::mle((LL_M6), start = list(alpha = 1, beta = 1, phi = 1), method = "L-BFGS-B", 
-                         lower = c(-Inf, -Inf, 1e-12), upper = c(Inf, Inf, Inf))
-  }
+  # M2_fit = stats4::mle((LL_M2), start = list(alpha = 1, beta = 1), method = "L-BFGS-B", 
+  #                      lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
+  # 
+  # if(y != 2)
+  # {
+  #   M3_fit = stats4::mle((LL_M3), start = list(alpha = 1, beta = 1), method = "L-BFGS-B", 
+  #                        lower = c(-Inf, -Inf), upper = c(Inf, Inf))
+  # }
+  # 
+  # 
+  # if(y != 9 & y != 5)
+  # {
+  #   M4_fit = stats4::mle((LL_M4), start = list(alpha = 1, phi = 1), method = "L-BFGS-B", 
+  #                        lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
+  # }
+  # 
+  # M5_fit = stats4::mle((LL_M5), start = list(alpha = 1, beta =1, phi = 1), method = "L-BFGS-B", 
+  #             lower = c(1e-12, 1e-12, 1e-12), upper = c(Inf, Inf, Inf))
+  # 
+  # if(y != 5 & y != 13 & y != 16)
+  # {
+  #   M6_fit = stats4::mle((LL_M6), start = list(alpha = 1, beta = 1, phi = 1), method = "L-BFGS-B", 
+  #                        lower = c(-Inf, -Inf, 1e-12), upper = c(Inf, Inf, Inf))
+  # }
   
   IC_M1 = rep(0, times = length(truth_set))
   IC_M2 = rep(0, times = length(truth_set))
@@ -211,20 +214,25 @@ for(i in 1:length(truth_set))
   
   for(z in 1:length(truth_set_valid))
   {
-    IC_M1[z] = IC_M1[z] + log(dbinom(x = truth_set[z], size = num_perch, prob = exp(-tau * M1_fit@details$par[["alpha"]]))) - 
+    IC_M1[z] = IC_M1[z] + log(dbinom(x = truth_set_valid[z], size = num_perch, prob = exp(-tau * M1_fit@details$par[["alpha"]]))) - 
       log(true_probs[z])
     
-    IC_M2[z] = IC_M2[z] + log(dbinom(x = truth_set[z], size = num_perch, prob = exp((-tau * M2_fit@details$par[["alpha"]]) / 
-                                                                                      (1 + M2_fit@details$par[["beta"]] * truth_set[z])))) -
-      log(true_probs[z])
-    
-    IC_M3[z] = IC_M3[z] + log(dbinom(x = truth_set[z], size = num_perch, 
-                                     prob = exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z]) /
-                                       (1 + exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z])))) - 
-      log(true_probs[z])
+    # IC_M2[z] = IC_M2[z] + log(dbinom(x = truth_set[z], size = num_perch, prob = exp((-tau * M2_fit@details$par[["alpha"]]) / 
+    #                                                                                   (1 + M2_fit@details$par[["beta"]] * truth_set[z])))) -
+    #   log(true_probs[z])
+    # 
+    # IC_M3[z] = IC_M3[z] + log(dbinom(x = truth_set[z], size = num_perch, 
+    #                                  prob = exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z]) /
+    #                                    (1 + exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z])))) - 
+    #   log(true_probs[z])
       
   }
   
-  IC_M1[z] = IC_M1[z] / length(truth_set_valid)
+  IC_M1[i] = IC_M1[i] / length(truth_set_valid)
+  IC_M2[i] = IC_M2[i] / length(truth_set_valid)
+  IC_M3[i] = IC_M3[i] / length(truth_set_valid)
   
 }
+
+IC_M1_mean = mean(IC_M1)
+
