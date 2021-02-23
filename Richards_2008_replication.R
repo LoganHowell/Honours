@@ -18,6 +18,7 @@ beta = 0.5 # The effectiveness of the kelp in mitigating perch capture.
 num_truths = 10000 # The number of truth values to be generated. 
 num_perch = 20 # The number of prey fish in the tank. 
 phi = 0.1 # The pre-determined overdispersion factor. 
+Z = 10000 # The number of new points to use in calculation of cumulative IC. 
 
 
 # Function for the true capture rate. 
@@ -60,33 +61,34 @@ for(i in 1:length(x))
 }
 
 
-test = function(x) { 
-  return(-(x-2)^2)  
+
+# We remove the log of the combination choose(num_perch, y) within each of M1 - M3
+# as it is constant with respect to alpha in the maximisation of the log likelihood. 
+LL_M1 = function(alpha) {
+  
+  return(-(-tau*alpha*y + (num_perch - y) * log(1 - exp(-tau*alpha))))
 }
 
 
-log_lik_theta_given_y = function(function_index, n, y) {
+LL_M2 = function(alpha, beta) {
   
-  # Get the relevant version of p_bar:
-  if(function_index == 1) {
-    p_bar = func_list[[function_index]]()
-  } else
-  {
-    p_bar = func_list[[function_index]](y)
-  }
-  
-  a = p_bar / phi
-  b = (1 - p_bar) / phi
-  
-  return(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
-    Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))
+  return(-(((-y * tau * alpha) / (1 + beta * y)) + log(1 - exp((-tau * alpha) / (1 + beta * y))) * (num_perch - y)))
 }
 
 
+LL_M3 = function(alpha, beta) {
+  
+  numerator = exp(-tau*alpha + beta * y)
+  denominator = 1 + exp(-alpha * tau + beta * y)
+  
+  # print(paste("Numerator::", numerator, sep = "  "))
+  # print(paste("Denominator::", denominator, sep = "  "))
+  # 
+  # print((y * (log(numerator) - log(denominator)) + (num_perch - y) * log(1 - (numerator / denominator))))
+  
+  return(-(y * (log(numerator) - log(denominator)) + (num_perch - y) * log(1 - (numerator / denominator))))
+}
 
-
-n = 20
-y = 3
 LL_M4 = function(alpha, phi) {
   
   p_bar = exp(-tau * alpha)
@@ -100,12 +102,9 @@ LL_M4 = function(alpha, phi) {
   # print(paste("Result:", -(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
   #               Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))))
   
-  return(-(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
-           Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b)))
+  return(-(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(num_perch - y + b) - 
+             Lgamma(y +  1) - Lgamma(num_perch - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(num_perch + a + b)))
 }
-
-stats4::mle((LL_M4), start = list(alpha = 1, phi = 1), method = "L-BFGS-B", 
-            lower = c(1e-10, 1e-10), upper = c(Inf, Inf))
 
 
 LL_M5 = function(alpha, beta, phi) {
@@ -121,12 +120,9 @@ LL_M5 = function(alpha, beta, phi) {
   # print(paste("Result:", -(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
   #               Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))))
   
-  return(-(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
-             Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b)))
+  return(-(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(num_perch - y + b) - 
+             Lgamma(y +  1) - Lgamma(num_perch - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(num_perch + a + b)))
 }
-
-stats4::mle((LL_M5), start = list(alpha = 1, beta =1, phi = 1), method = "L-BFGS-B", 
-            lower = c(1e-10, 1e-10, 1e-10), upper = c(Inf, Inf, Inf))
 
 LL_M6 = function(alpha, beta, phi) {
   
@@ -135,15 +131,100 @@ LL_M6 = function(alpha, beta, phi) {
   a = p_bar / phi
   b = (1 - p_bar) / phi
   
+  # print(paste("p_bar:", p_bar))
   # print(paste("a:", a, "b:", b, sep = " "))
-  # print(paste("alpha:", alpha, "phi:", phi, sep = "   "))
-  # 
-  # print(paste("Result:", -(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
-  #               Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b))))
+  # print(paste("alpha:", alpha, "phi:", phi, sep = " "))
+  # print(paste("Result:", -(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(num_perch - y + b) - 
+  #                            Lgamma(y +  1) - Lgamma(num_perch - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(num_perch + a + b))))
+  # print("")
   
-  return(-(Lgamma(n + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(n - y + b) - 
-             Lgamma(y +  1) - Lgamma(n - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(n + a + b)))
+  
+  return(-(Lgamma(num_perch + 1) + Lgamma(a + b) + Lgamma(y + a) + Lgamma(num_perch - y + b) - 
+             Lgamma(y +  1) - Lgamma(num_perch - y + 1) - Lgamma(a) - Lgamma(b) - Lgamma(num_perch + a + b)))
 }
 
-stats4::mle((LL_M6), start = list(alpha = 1, beta = 1, phi = 1), method = "L-BFGS-B", 
-            lower = c(1e-10, 1e-10, 1e-10), upper = c(Inf, Inf, Inf))
+# Access method for optimised parameters:
+#opt_obj@details$par
+
+for(i in 1:length(truth_set))
+{
+  # Dear Lord, please forgive me for what I'm about to do:
+  # Extract the i'th value and overwrite the previously declared global variable 
+  # so all optimisation functions have global access :_( 
+  y = truth_set[i] 
+  
+  print(i)
+  
+  # Fit each of the models using MLE:
+  
+  M1_fit = stats4::mle((LL_M1), start = list(alpha = 1), method = "L-BFGS-B", 
+                       lower = c(1e-12), upper = c(Inf))
+  
+  M2_fit = stats4::mle((LL_M2), start = list(alpha = 1, beta = 1), method = "L-BFGS-B", 
+                       lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
+  
+  if(y != 2 & y != 20)
+  {
+    M3_fit = stats4::mle((LL_M3), start = list(alpha = 1, beta = 1), method = "L-BFGS-B", 
+                         lower = c(-Inf, -Inf), upper = c(Inf, Inf))
+  }
+  
+  
+  if(y != 9)
+  {
+    M4_fit = stats4::mle((LL_M4), start = list(alpha = 1, phi = 1), method = "L-BFGS-B", 
+                         lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
+  }
+  
+  M5_fit = stats4::mle((LL_M5), start = list(alpha = 1, beta =1, phi = 1), method = "L-BFGS-B", 
+              lower = c(1e-12, 1e-12, 1e-12), upper = c(Inf, Inf, Inf))
+  
+  if(y != 5 & y != 15 & y != 18)
+  {
+    M6_fit = stats4::mle((LL_M6), start = list(alpha = 1, beta = 1, phi = 1), method = "L-BFGS-B", 
+                         lower = c(-Inf, -Inf, 1e-12), upper = c(Inf, Inf, Inf))
+  }
+  
+  IC_M1 = rep(0, times = length(truth_set))
+  IC_M2 = rep(0, times = length(truth_set))
+  IC_M3 = rep(0, times = length(truth_set))
+  IC_M4 = rep(0, times = length(truth_set))
+  IC_M5 = rep(0, times = length(truth_set))
+  IC_M6 = rep(0, times = length(truth_set))
+  
+  r_valid = rep(1:4, each = Z)
+  
+  # Generate the "truth" dataset: 
+  truth_set_valid = c()
+  true_probs = c()
+  
+  for(i in 1:length(r_valid))
+  {
+    alpha_truth = p2(r_valid[i]) / phi
+    beta_truth = (1 - p2(r_valid[i])) / phi
+    
+    truth_set_valid[i] = extraDistr::rbbinom(n = 1, size = num_perch, 
+                                       alpha = alpha_truth, beta = beta_truth)
+    
+    true_probs[i] = dbbinom(x = truth_set_valid[i], size = num_perch, alpha = alpha_truth, beta = beta_truth)
+  }
+  
+  for(z in 1:length(truth_set_valid))
+  {
+    IC_M1[z] = IC_M1[z] + log(dbinom(x = truth_set[z], size = num_perch, prob = exp(-tau * M1_fit@details$par[["alpha"]]))) - 
+      log(true_probs[z])
+    
+    IC_M2[z] = IC_M2[z] + log(dbinom(x = truth_set[z], size = num_perch, prob = exp((-tau * M2_fit@details$par[["alpha"]]) / 
+                                                                                      (1 + M2_fit@details$par[["beta"]] * truth_set[z])))) -
+      log(true_probs[z])
+    
+    IC_M3[z] = IC_M3[z] + log(dbinom(x = truth_set[z], size = num_perch, 
+                                     prob = exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z]) /
+                                       (1 + exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z])))) - 
+      log(true_probs[z])
+      
+  }
+  
+  IC_M1[z] = IC_M1[z] / length(truth_set_valid)
+  
+}
