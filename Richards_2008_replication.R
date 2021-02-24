@@ -11,12 +11,11 @@ library(fAsianOptions)
 # Binomial Example: 
 
 r_pool_replicates = 5
-
 kelp_bunches = seq(1:4) # The number of kelp bunches. 
 tau = 15 # The duration of the experiment. 
 alpha = 0.075 # Pre-defined capture rate (per hour). 
 beta = 0.5 # The effectiveness of the kelp in mitigating perch capture. 
-num_truths = 500 # The number of truth values to be generated and which the models will be fit to (for each treatment). 
+num_truths = 750 # The number of truth values to be generated and which the models will be fit to (for each treatment). 
 num_perch = 20 # The number of prey fish in the tank. 
 phi = 0.1 # The pre-determined overdispersion factor. 
 Z = 500 # The number of new points to use in calculation of cumulative IC (for each treatment). 
@@ -71,6 +70,11 @@ LL_M1 = function(alpha) {
 
 
 LL_M2 = function(alpha, beta) {
+  
+  print(paste("alpha: ", alpha))
+  print(paste("beta: ", beta))
+  print(paste("Result: ", (((-y * tau * alpha) / (1 + beta * y)) + log(1 - exp((-tau * alpha) / (1 + beta * y))) * (num_perch - y))))
+  print("")
   
   return(-(((-y * tau * alpha) / (1 + beta * y)) + log(1 - exp((-tau * alpha) / (1 + beta * y))) * (num_perch - y)))
 }
@@ -147,6 +151,11 @@ LL_M6 = function(alpha, beta, phi) {
 # Access method for optimised parameters:
 #opt_obj@details$par
 
+# DEV NOTES: 
+# - M4, M5 and M6 each do not have problems handling y = 20, but M1, M2 and M3 can't handle y = 20. 
+# - M1, M2, M3
+
+
 for(i in 1:length(truth_set))
 {
   # Dear Lord, please forgive me for what I'm about to do:
@@ -161,32 +170,60 @@ for(i in 1:length(truth_set))
   {
     M1_fit = stats4::mle((LL_M1), start = list(alpha = 1), method = "L-BFGS-B", 
                          lower = c(1e-3), upper = c(Inf))
+    
+    M2_fit = stats4::mle((LL_M2), start = list(alpha = 1, beta = 1), method = "L-BFGS-B",
+                         lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
+    
+    # Seed the solver with different initial values to prevent 
+    if(y == 2)
+    {
+      alpha_start = 0
+      beta_start = 0
+    } else
+    {
+      alpha_start = 1
+      beta_start = 1
+    }
+    
+    M3_fit = stats4::mle((LL_M3), start = list(alpha = alpha_start, beta = beta_start), method = "L-BFGS-B",
+                         lower = c(-Inf, -Inf), upper = c(Inf, Inf))
+    
+    if(y == 5 | y == 9)
+    {
+      alpha_start = 1.5
+      phi_start = 1.5
+    }
+    else
+    {
+      alpha_start = 1
+      phi_start = 1
+    }
+    
+    M4_fit = stats4::mle((LL_M4), start = list(alpha = alpha_start, phi = phi_start), method = "L-BFGS-B", 
+                          lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
+    
+    M5_fit = stats4::mle((LL_M5), start = list(alpha = 1, beta =1, phi = 1), method = "L-BFGS-B",
+                         lower = c(1e-12, 1e-12, 1e-12), upper = c(Inf, Inf, Inf))
+    
+    if(y %in% c(3,5,13,16,20))
+    {
+      alpha_start = 1/2
+      beta_start = 1/2
+      phi_start = 1/2
+    }
+    else
+    {
+      alpha_start = 1
+      beta_start = 1
+      phi_start = 1
+    }
+    
+    M6_fit = stats4::mle((LL_M6), start = list(alpha = alpha_start, beta = beta_start, phi = phi_start), method = "L-BFGS-B",
+                         lower = c(-Inf, -Inf, 1e-12), upper = c(Inf, Inf, Inf))
+    
+  
   }
   
-  # M2_fit = stats4::mle((LL_M2), start = list(alpha = 1, beta = 1), method = "L-BFGS-B", 
-  #                      lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
-  # 
-  # if(y != 2)
-  # {
-  #   M3_fit = stats4::mle((LL_M3), start = list(alpha = 1, beta = 1), method = "L-BFGS-B", 
-  #                        lower = c(-Inf, -Inf), upper = c(Inf, Inf))
-  # }
-  # 
-  # 
-  # if(y != 9 & y != 5)
-  # {
-  #   M4_fit = stats4::mle((LL_M4), start = list(alpha = 1, phi = 1), method = "L-BFGS-B", 
-  #                        lower = c(1e-12, 1e-12), upper = c(Inf, Inf))
-  # }
-  # 
-  # M5_fit = stats4::mle((LL_M5), start = list(alpha = 1, beta =1, phi = 1), method = "L-BFGS-B", 
-  #             lower = c(1e-12, 1e-12, 1e-12), upper = c(Inf, Inf, Inf))
-  # 
-  # if(y != 5 & y != 13 & y != 16)
-  # {
-  #   M6_fit = stats4::mle((LL_M6), start = list(alpha = 1, beta = 1, phi = 1), method = "L-BFGS-B", 
-  #                        lower = c(-Inf, -Inf, 1e-12), upper = c(Inf, Inf, Inf))
-  # }
   
   IC_M1 = rep(0, times = length(truth_set))
   IC_M2 = rep(0, times = length(truth_set))
@@ -217,22 +254,36 @@ for(i in 1:length(truth_set))
     IC_M1[z] = IC_M1[z] + log(dbinom(x = truth_set_valid[z], size = num_perch, prob = exp(-tau * M1_fit@details$par[["alpha"]]))) - 
       log(true_probs[z])
     
-    # IC_M2[z] = IC_M2[z] + log(dbinom(x = truth_set[z], size = num_perch, prob = exp((-tau * M2_fit@details$par[["alpha"]]) / 
-    #                                                                                   (1 + M2_fit@details$par[["beta"]] * truth_set[z])))) -
-    #   log(true_probs[z])
-    # 
-    # IC_M3[z] = IC_M3[z] + log(dbinom(x = truth_set[z], size = num_perch, 
-    #                                  prob = exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z]) /
-    #                                    (1 + exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z])))) - 
-    #   log(true_probs[z])
+    IC_M2[z] = IC_M2[z] + log(dbinom(x = truth_set_valid[z], size = num_perch, prob = exp((-tau * M2_fit@details$par[["alpha"]]) /
+                                                                                      (1 + M2_fit@details$par[["beta"]] * truth_set_valid[z])))) -
+      log(true_probs[z])
+
+    IC_M3[z] = IC_M3[z] + log(dbinom(x = truth_set[z], size = num_perch,
+                                     prob = exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z]) /
+                                       (1 + exp(-tau * M3_fit@details$par[["alpha"]] + M3_fit@details$par[["beta"]] * truth_set[z])))) -
+      log(true_probs[z])
+
+    
+    IC_M5[z] = IC_M5[z] + log(dbinom(x = truth_set_valid[z], size = num_perch, prob = exp((-tau * M5_fit@details$par[["alpha"]]) /
+                                                                                            (1 + M5_fit@details$par[["beta"]] * truth_set_valid[z])))) -
+      log(true_probs[z])
       
   }
   
   IC_M1[i] = IC_M1[i] / length(truth_set_valid)
   IC_M2[i] = IC_M2[i] / length(truth_set_valid)
   IC_M3[i] = IC_M3[i] / length(truth_set_valid)
+  IC_M4[i] = IC_M4[i] / length(truth_set_valid)
+  IC_M5[i] = IC_M5[i] / length(truth_set_valid)
+  IC_M6[i] = IC_M6[i] / length(truth_set_valid)
   
 }
 
 IC_M1_mean = mean(IC_M1)
+IC_M2_mean = mean(IC_M2)
+IC_M3_mean = mean(IC_M3)
+IC_M4_mean = mean(IC_M4)
+IC_M5_mean = mean(IC_M5)
+IC_M6_mean = mean(IC_M6)
+
 
