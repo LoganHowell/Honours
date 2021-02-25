@@ -36,6 +36,9 @@ B_LL_M4 = matrix(c(0,0), 2, 1)
 A_LL_M5 = matrix(c(1,0,0,0,1,0,0,0,1), 3,3)
 B_LL_M5 = matrix(c(0,0, 0), 3, 1)
 
+A_LL_M6 = matrix(c(1,0,0,0,1,0,0,0,1), 3,3)
+B_LL_M6 = matrix(c(0,0, 0), 3, 1)
+
 
 # Collection of functions associated with each of the mean probabilities of survival 
 # for each model.
@@ -146,6 +149,8 @@ LL_M6 = function(par) {
 
 ll_mat = matrix(data = 0, nrow = num_reps, ncol = 6)
 
+flag = FALSE
+
 for(i in 1:num_reps)
 {
   # Generate the i'th "truth" dataset: 
@@ -175,7 +180,7 @@ for(i in 1:num_reps)
   M3_fit = maxLik::maxLik(logLik = LL_M3, start = c(1,1))
   M4_fit = maxLik::maxLik(logLik = LL_M4, start = c(1,1), constraints = list(ineqA = A_LL_M4, ineqB = B_LL_M4))
   M5_fit = maxLik::maxLik(logLik = LL_M5, start = c(1,1,1), constraints = list(ineqA = A_LL_M5, ineqB = B_LL_M5))
-  M6_fit = maxLik::maxLik(logLik = LL_M6, start = c(1,1,1))
+  M6_fit = maxLik::maxLik(logLik = LL_M6, start = c(1,1,1), constraints = list(ineqA = A_LL_M6, ineqB = B_LL_M6))
   
   # Instantiate a vector to keep track of the KLD for the i'th iteration:
   zth_results = rep(0, time = 6)
@@ -224,18 +229,32 @@ for(i in 1:num_reps)
                             alpha = M5_fit$estimate[1],
                             beta = M5_fit$estimate[2]))) - 
       sum(log(x_prob))) / Z
-    
+     
     zth_results[6] = zth_results[6] + (sum(log(extraDistr::dbbinom(x = x_valid, size = num_perch,
                             alpha = M6_fit$estimate[1],
                             beta = M6_fit$estimate[2]))) - 
       sum(log(x_prob))) / Z
     
+    if(is.na(zth_results[6]))
+    {
+      flag = TRUE
+      break
+    }
+    
+  }
+  
+  if(flag)
+  {
+    break
   }
   
   ll_mat[i, ] = zth_results
 
 }
 
-EKLD = colMeans(ll_mat)
+EKLD = data.frame(
+  EKLD = colMeans(ll_mat),
+  Model = c(1:6)
+)
 
-
+EKLD[order(EKLD$EKLD), ]
