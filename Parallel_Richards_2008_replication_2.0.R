@@ -10,6 +10,7 @@ library(fAsianOptions)
 library(maxLik)
 library(matrixStats)
 library(ramify)
+library(purrr)
 
 # Binomial Example: 
 
@@ -64,26 +65,26 @@ x = rep(1:4, each = num_truths)
 
 # We remove the log of the combination choose(num_perch, y) within each of M1 - M3
 # as it is constant with respect to alpha in the maximisation of the log likelihood. 
-LL_M1 = function(pars) {
+LL_M1 = function(par, y) {
   
-  return((-tau * pars[1] * y + (num_perch - y) * log(1 - exp(-tau * pars[1]))))
+  return((-tau * par[1] * y + (num_perch - y) * log(1 - exp(-tau * par[1]))))
 }
 
-LL_M2 = function(pars) {
-
-  return(sum(((-y * tau * pars[1]) / (1 + pars[2] * y)) + log(1 - exp((-tau * pars[1]) / (1 + pars[2] * y))) * (num_perch - y)))
+LL_M2 = function(par, y) {
+  
+  return(sum(((-y * tau * par[1]) / (1 + par[2] * y)) + log(1 - exp((-tau * par[1]) / (1 + par[2] * y))) * (num_perch - y)))
 }
 
-LL_M3 = function(par) {
+LL_M3 = function(par, y) {
   
   numerator = exp(-tau * par[1] + par[2] * y)
   denominator = 1 + exp(-par[1] * tau + par[2] * y)
-
+  
   return(sum(y * (log(numerator) - log(denominator)) + (num_perch - y) * log(1 - (numerator / denominator))))
 }
 
 
-LL_M4 = function(par) {
+LL_M4 = function(par, y) {
   
   p_bar = exp(-tau * par[1])
   
@@ -95,7 +96,7 @@ LL_M4 = function(par) {
 }
 
 
-LL_M5 = function(par) {
+LL_M5 = function(par, y) {
   
   p_bar = exp(-tau * par[1] / (1 + par[2] * y))
   
@@ -107,23 +108,19 @@ LL_M5 = function(par) {
 }
 
 
-LL_M6 = function(par) {
+LL_M6 = function(par, y) {
   
   p_bar = exp(-tau * par[1] + par[2] * y) / (1 + exp(-tau * par[1] + par[2] * y))
   
   a = p_bar / par[3]
   b = (1 - p_bar) / par[3]
-
+  
   return(sum((lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(num_perch - y + b) - 
                 lgamma(y +  1) - lgamma(num_perch - y + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b))))
   
 }
 
-ll_mat = matrix(data = 0, nrow = num_reps, ncol = 6)
-AIC_mat = matrix(data = 0, nrow = num_reps, ncol = 6)
-
-# Fit and compare the models num_reps times:
-for(i in 1:num_reps)
+process_rep = function(i)
 {
   # Generate the i'th "truth" dataset: 
   truth_set = c()
@@ -138,21 +135,14 @@ for(i in 1:num_reps)
     truth_set[j] = extraDistr::rbbinom(n = 1, size = num_perch, 
                                        alpha = alpha_truth, beta = beta_truth)
   }
-  
-  # Dear Lord, please forgive me for what I'm about to do:
-  # Set y to be the current truth set all optimisation functions have global access :_( 
-  y = truth_set 
-  
-  print(i)
-  
+
   # Fit each of the models to the generated data:
-   
-  M1_fit = maxLik::maxLik(logLik = LL_M1, start = c(1), constraints = list(ineqA = A_LL_M1, ineqB = B_LL_M1), method = "BFGS")
-  M2_fit = maxLik::maxLik(logLik = LL_M2, start = c(1,1), constraints = list(ineqA = A_LL_M2, ineqB = B_LL_M2))
-  M3_fit = maxLik::maxLik(logLik = LL_M3, start = c(1,1))
-  M4_fit = maxLik::maxLik(logLik = LL_M4, start = c(1,1), constraints = list(ineqA = A_LL_M4, ineqB = B_LL_M4))
-  M5_fit = maxLik::maxLik(logLik = LL_M5, start = c(1,1,1), constraints = list(ineqA = A_LL_M5, ineqB = B_LL_M5))
-  M6_fit = maxLik::maxLik(logLik = LL_M6, start = c(1,1,1), constraints = list(ineqA = A_LL_M6, ineqB = B_LL_M6))
+  M1_fit = maxLik::maxLik(logLik = LL_M1, start = c(1), constraints = list(ineqA = A_LL_M1, ineqB = B_LL_M1), method = "BFGS", y = truth_set)
+  M2_fit = maxLik::maxLik(logLik = LL_M2, start = c(1,1), constraints = list(ineqA = A_LL_M2, ineqB = B_LL_M2), y = truth_set)
+  M3_fit = maxLik::maxLik(logLik = LL_M3, start = c(1,1), y = truth_set)
+  M4_fit = maxLik::maxLik(logLik = LL_M4, start = c(1,1), constraints = list(ineqA = A_LL_M4, ineqB = B_LL_M4), y = truth_set)
+  M5_fit = maxLik::maxLik(logLik = LL_M5, start = c(1,1,1), constraints = list(ineqA = A_LL_M5, ineqB = B_LL_M5), y = truth_set)
+  M6_fit = maxLik::maxLik(logLik = LL_M6, start = c(1,1,1), constraints = list(ineqA = A_LL_M6, ineqB = B_LL_M6), y = truth_set)
   
   # Instantiate a vector to keep track of the KLD for the i'th iteration:
   zth_results = rep(0, time = 6)
@@ -166,7 +156,7 @@ for(i in 1:num_reps)
     
     # Generate another set of "truth" data points (as per previous) and their 
     # associated probabilities. 
-
+    
     x_valid = extraDistr::rbbinom(n = length(x), size = num_perch, 
                                   alpha = alpha_truth, beta = beta_truth)
     
@@ -182,41 +172,66 @@ for(i in 1:num_reps)
     
     # Calculate the KLD values themselves: 
     zth_results[1] = zth_results[1] + (sum(log(dbinom(x = x_valid, size = num_perch, prob = exp(-tau * M1_fit$estimate[1])))) - 
-      sum(log(x_prob)))
+                                         sum(log(x_prob)))
     
     zth_results[2] = zth_results[2] + (sum(log(dbinom(x = x_valid, size = num_perch, prob = exp((-tau * M2_fit$estimate[1]) /
-                                                                      (1 + M2_fit$estimate[2] * x_valid))))) - 
-      sum(log(x_prob))) 
+                                                                                                  (1 + M2_fit$estimate[2] * x_valid))))) - 
+                                         sum(log(x_prob))) 
     
     zth_results[3] = zth_results[3] + (sum(log(dbinom(x = x_valid, size = num_perch,
-               prob = exp(-tau * M3_fit$estimate[1] + M3_fit$estimate[2] * x_valid) /
-                 (1 + exp(-tau * M3_fit$estimate[1] + M3_fit$estimate[2] * x_valid))))) - 
-      sum(log(x_prob))) 
+                                                      prob = exp(-tau * M3_fit$estimate[1] + M3_fit$estimate[2] * x_valid) /
+                                                        (1 + exp(-tau * M3_fit$estimate[1] + M3_fit$estimate[2] * x_valid))))) - 
+                                         sum(log(x_prob))) 
     
     zth_results[4] = zth_results[4] + (sum(log(extraDistr::dbbinom(x = x_valid, size = num_perch,
-                            alpha = M4_fit$estimate[1],
-                            beta = M4_fit$estimate[2]))) - 
-      sum(log(x_prob))) 
+                                                                   alpha = M4_fit$estimate[1],
+                                                                   beta = M4_fit$estimate[2]))) - 
+                                         sum(log(x_prob))) 
     
     zth_results[5] = zth_results[5] + (sum(log(extraDistr::dbbinom(x = x_valid, size = num_perch,
-                            alpha = M5_fit$estimate[1],
-                            beta = M5_fit$estimate[2]))) - 
-      sum(log(x_prob)))
-     
+                                                                   alpha = M5_fit$estimate[1],
+                                                                   beta = M5_fit$estimate[2]))) - 
+                                         sum(log(x_prob)))
+    
     zth_results[6] = zth_results[6] + (sum(log(extraDistr::dbbinom(x = x_valid, size = num_perch,
-                            alpha = M6_fit$estimate[1],
-                            beta = M6_fit$estimate[2]))) - 
-      sum(log(x_prob))) 
-
+                                                                   alpha = M6_fit$estimate[1],
+                                                                   beta = M6_fit$estimate[2]))) - 
+                                         sum(log(x_prob))) 
+    
   }
   
-  ll_mat[i, ] = zth_results / Z
+  return_list = vector("list", length = 2) # Initialise a list to return from the function.
 
-  # Estimate the AIC metric using the approximatation: AIC(M) = 2 * (I(p,pi) - c)
-  AIC_mat[i, ] = 2 * (ll_mat[i, ] - c)
+  # Save the return values in a set order:
+  # @pos1: the mean KLD for the current fit.
+  # @pos2: the AIC values for the current fit, calculted using the mean KLD values.
+  # @pos3: the index of the current fit.
+
+  return_list[[1]] = zth_results / Z
+  return_list[[2]] = 2 * (zth_results / Z - c)
+
+  
+  # Return the mean KLD for the current fit. 
+  return(return_list)
+  
   
 }
 
+ll_mat = matrix(data = 0, nrow = num_reps, ncol = 6)
+AIC_mat = matrix(data = 0, nrow = num_reps, ncol = 6)
+
+# Set up the parallel environment:
+num_cores = parallel::detectCores()
+cluster = parallel::makeCluster(num_cores, type = "PSOCK")
+doParallel::registerDoParallel(cluster)
+
+parallel_results <- foreach(i=1:num_reps) %dopar% process_rep(i)
+
+KLD_parallel_results = purrr::map(parallel_results, 1)
+AIC_parallel_results = purrr::map(parallel_results, 2)
+
+KLD_mat = matrix(unlist(KLD_parallel_results), ncol = 6, byrow = TRUE)
+AIC_mat = matrix(unlist(AIC_parallel_results), ncol = 6, byrow = TRUE)
 
 # Perform model selection based on the AIC values calculated above. 
 
@@ -247,9 +262,9 @@ selection_prop = selection_times / num_reps
 
 # Calculate mean KLD and the associated standard errors. 
 EKLD = data.frame(
-  EKLD = colMeans(ll_mat),
+  EKLD = colMeans(KLD_mat),
   Model = c(1:6),
-  SE_EKLD = matrixStats::colSds(ll_mat) / nrow(ll_mat)
+  SE_EKLD = matrixStats::colSds(KLD_mat) / nrow(KLD_mat)
 )
 
 EKLD[order(EKLD$EKLD), ]
