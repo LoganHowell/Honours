@@ -15,12 +15,11 @@ library(doSNOW)
 
 # Binomial Example: 
 
-r_pool_replicates = 5
 kelp_bunches = seq(1:4) # The number of kelp bunches. 
 tau = 15 # The duration of the experiment. 
 alpha = 0.075 # Pre-defined capture rate (per hour). 
 beta = 0.5 # The effectiveness of the kelp in mitigating perch capture. 
-num_truths = 5 # The number of truth values to be generated and which the models will be fit to (for each treatment). 
+num_truths = 10 # The number of truth values to be generated and which the models will be fit to (for each treatment). 
 num_perch = 20 # The number of prey fish in the tank. 
 phi = 0.1 # The pre-determined overdispersion factor.
 num_reps = 100 # The number of times the KLD will be calculated. 
@@ -66,58 +65,70 @@ x = rep(1:4, each = num_truths)
 
 # We remove the log of the combination choose(num_perch, y) within each of M1 - M3
 # as it is constant with respect to alpha in the maximisation of the log likelihood. 
-LL_M1 = function(par, y) {
+LL_M1 = function(par, y_perch) { # MANUAL CHECK OK. 
   
-  return((-tau * par[1] * y + (num_perch - y) * log(1 - exp(-tau * par[1]))))
+  p_bar = exp(-tau * par[1])
+  
+  return(sum(log(choose(num_perch, y_perch)) + y_perch * log(p_bar) + (num_perch - y_perch) * log(1 - p_bar)))
 }
 
-LL_M2 = function(par, y) {
+LL_M2 = function(par, x_kelp, y_perch) {
   
-  return(sum(((-y * tau * par[1]) / (1 + par[2] * y)) + log(1 - exp((-tau * par[1]) / (1 + par[2] * y))) * (num_perch - y)))
+  alpha_LL = par[1]
+  beta_LL = par[2]
+  
+  p_bar = exp(-tau * alpha_LL / (1 + beta_LL * x_kelp))
+  
+  return(sum(log(choose(num_perch, y_perch)) + y_perch * log(p_bar) + (num_perch - y_perch) * log(1 - p_bar)))
 }
 
-LL_M3 = function(par, y) {
+LL_M3 = function(par, x_kelp, y_perch) {
   
-  numerator = exp(-tau * par[1] + par[2] * y)
-  denominator = 1 + exp(-par[1] * tau + par[2] * y)
+  alpha_LL = par[1]
+  beta_LL = par[2]
   
-  return(sum(y * (log(numerator) - log(denominator)) + (num_perch - y) * log(1 - (numerator / denominator))))
+  numerator = exp(-tau * alpha_LL + beta_LL * x_kelp)
+  denominator = 1 + exp(-alpha_LL * tau + beta_LL * x_kelp)
+  
+  p_bar = numerator / denominator
+  
+  return(sum(log(choose(num_perch, y_perch)) + y_perch * log(p_bar) + (num_perch - y_perch) * log(1 - p_bar)))
 }
 
 
-LL_M4 = function(par, y) {
+LL_M4 = function(par, y_perch) {
   
   p_bar = exp(-tau * par[1])
   
   a = p_bar / par[2]
   b = (1 - p_bar) / par[2]
   
-  return(sum(lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(num_perch - y + b) - 
-               lgamma(y +  1) - lgamma(num_perch - y + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b)))
+  return(sum(lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y_perch + a) + lgamma(num_perch - y_perch + b) - 
+               lgamma(y_perch +  1) - lgamma(num_perch - y_perch + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b)))
 }
 
 
-LL_M5 = function(par, y) {
+LL_M5 = function(par, x_kelp, y_perch) {
   
-  p_bar = exp(-tau * par[1] / (1 + par[2] * y))
+  p_bar = exp(-tau * par[1] / (1 + par[2] * x_kelp))
   
   a = p_bar / par[3]
   b = (1 - p_bar) / par[3]
   
-  return(sum(lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(num_perch - y + b) - 
-               lgamma(y +  1) - lgamma(num_perch - y + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b)))
+  return(sum(lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y_perch + a) + lgamma(num_perch - y_perch + b) - 
+               lgamma(y_perch +  1) - lgamma(num_perch - y_perch + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b)))
 }
 
 
-LL_M6 = function(par, y) {
+LL_M6 = function(par, x_kelp, y_perch) {
   
-  p_bar = exp(-tau * par[1] + par[2] * y) / (1 + exp(-tau * par[1] + par[2] * y))
+  p_bar = exp(-tau * par[1] + par[2] * x_kelp) / (1 + exp(-tau * par[1] + par[2] * x_kelp))
   
   a = p_bar / par[3]
   b = (1 - p_bar) / par[3]
   
-  return(sum((lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y + a) + lgamma(num_perch - y + b) - 
-                lgamma(y +  1) - lgamma(num_perch - y + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b))))
+  return(sum(lgamma(num_perch + 1) + lgamma(a + b) + lgamma(y_perch + a) + lgamma(num_perch - y_perch + b) - 
+                lgamma(y_perch +  1) - lgamma(num_perch - y_perch + 1) - lgamma(a) - lgamma(b) - lgamma(num_perch + a + b)))
   
 }
 
@@ -135,15 +146,48 @@ process_rep = function(i)
     
     truth_set[j] = extraDistr::rbbinom(n = 1, size = num_perch, 
                                        alpha = alpha_truth, beta = beta_truth)
+  
   }
+  
+  # my_table = data.frame(x, truth_set, line = 20 * exp((-tau * alpha) / (1 + beta * x)))
+  # plot(my_table$x, my_table$truth_set)
+  # lines(my_table$x, my_table$line)
 
+  
+  # M5_p_bar = exp((-tau * M5_fit$estimate[1]) / (1 + M5_fit$estimate[2] * truth_set))
+  # M5_alpha = M5_p_bar /  M5_fit$estimate[3]
+  # M5_beta = (1 - M5_p_bar) / M5_fit$estimate[3]
+  # 
+  # my_table = data.frame(x, truth_set, line = 20 * exp((-tau * alpha) / (1 + beta * x)))
+  # 
+  # #my_table$model = 20 * extraDistr::dbbinom(x = truth_set, size = num_perch, alpha = M5_alpha, beta = M5_beta)
+  # 
+  # M1_fit = maxLik::maxLik(logLik = LL_M1, start = c(1), constraints = list(ineqA = A_LL_M1, ineqB = B_LL_M1), method = "BFGS", y = x)
+  # 
+  # M2_fit = maxLik::maxLik(logLik = LL_M2, start = c(1,1), constraints = list(ineqA = A_LL_M2, ineqB = B_LL_M2), y_perch = truth_set, x_kelp = x)
+  # 
+  # my_table$model_M3 =  20 * exp(-tau * M3_fit$estimate[1] + M3_fit$estimate[2] * x) /
+  #   (1 + exp(-tau * M3_fit$estimate[1] + M3_fit$estimate[2] * x))
+  # 
+  # my_table$model_M2 = 20 * exp(-tau * M2_fit$estimate[1] / (1 + M2_fit$estimate[2] * x))
+  # 
+  # 
+  # sum(truth_set) / (20 * num_perch)
+  # 
+  # points(my_table$x, my_table$model_M3, col = "red")
+  # plot(my_table$x, my_table$truth_set)
+
+  #lines(my_table$x, my_table$line)
+
+  
+  
   # Fit each of the models to the generated data:
-  M1_fit = maxLik::maxLik(logLik = LL_M1, start = c(1), constraints = list(ineqA = A_LL_M1, ineqB = B_LL_M1), method = "BFGS", y = truth_set)
-  M2_fit = maxLik::maxLik(logLik = LL_M2, start = c(1,1), constraints = list(ineqA = A_LL_M2, ineqB = B_LL_M2), y = truth_set)
-  M3_fit = maxLik::maxLik(logLik = LL_M3, start = c(1,1), y = truth_set)
-  M4_fit = maxLik::maxLik(logLik = LL_M4, start = c(1,1), constraints = list(ineqA = A_LL_M4, ineqB = B_LL_M4), y = truth_set)
-  M5_fit = maxLik::maxLik(logLik = LL_M5, start = c(1,1,1), constraints = list(ineqA = A_LL_M5, ineqB = B_LL_M5), y = truth_set)
-  M6_fit = maxLik::maxLik(logLik = LL_M6, start = c(1,1,1), constraints = list(ineqA = A_LL_M6, ineqB = B_LL_M6), y = truth_set)
+  M1_fit = maxLik::maxLik(logLik = LL_M1, start = c(1), constraints = list(ineqA = A_LL_M1, ineqB = B_LL_M1), method = "BFGS", y_perch = truth_set)
+  M2_fit = maxLik::maxLik(logLik = LL_M2, start = c(1,1), constraints = list(ineqA = A_LL_M2, ineqB = B_LL_M2), x_kelp = x, y_perch = truth_set)
+  M3_fit = maxLik::maxLik(logLik = LL_M3, start = c(1,1), x_kelp = x, y_perch = truth_set)
+  M4_fit = maxLik::maxLik(logLik = LL_M4, start = c(1,1), constraints = list(ineqA = A_LL_M4, ineqB = B_LL_M4), y_perch = truth_set)
+  M5_fit = maxLik::maxLik(logLik = LL_M5, start = c(1,1,1), constraints = list(ineqA = A_LL_M5, ineqB = B_LL_M5), x_kelp = x, y_perch = truth_set)
+  M6_fit = maxLik::maxLik(logLik = LL_M6, start = c(1,1,1), constraints = list(ineqA = A_LL_M6, ineqB = B_LL_M6), x_kelp = x, y_perch = truth_set)
   
   AIC_results = rep(0, times = 6)
   
@@ -181,7 +225,7 @@ process_rep = function(i)
     # Produce a set of "truth" data points:
     x_prob = extraDistr::dbbinom(x = x_valid, size = num_perch, alpha = alpha_truth, beta = beta_truth)
     
-    c = sum((x_prob) * log(x_prob))
+    c = sum((x_prob) * log(x_prob)) # Expected log probability of the i'th outcome. The c term is common to all models. 
     
     # Calculate the KLD values themselves: 
     zth_results[1] = zth_results[1] + sum(log(x_prob)) - sum(log(dbinom(x = x_valid, size = num_perch, prob = exp(-tau * M1_fit$estimate[1]))))
@@ -196,24 +240,37 @@ process_rep = function(i)
                                                         (1 + exp(-tau * M3_fit$estimate[1] + M3_fit$estimate[2] * x_valid))))) 
                                          
     
+    M4_p_bar = exp(-tau * M4_fit$estimate[1])
+    M4_alpha = M4_p_bar /  M4_fit$estimate[2]
+    M4_beta = (1 - M4_p_bar) / M4_fit$estimate[2]
+    
     zth_results[4] = zth_results[4] + sum(log(x_prob)) - sum(log(extraDistr::dbbinom(x = x_valid, size = num_perch,
-                                                                   alpha = M4_fit$estimate[1],
-                                                                   beta = M4_fit$estimate[2])))
+                                                                   alpha = M4_alpha,
+                                                                   beta = M4_beta)))
                                          
+    
+    M5_p_bar = exp((-tau * M5_fit$estimate[1]) / (1 + M5_fit$estimate[2] * x_valid))
+    M5_alpha = M5_p_bar /  M5_fit$estimate[3]
+    M5_beta = (1 - M5_p_bar) / M5_fit$estimate[3]
     
     zth_results[5] = zth_results[5] + sum(log(x_prob)) - sum(log(extraDistr::dbbinom(x = x_valid, size = num_perch,
-                                                                   alpha = M5_fit$estimate[1],
-                                                                   beta = M5_fit$estimate[2]))) 
+                                                                   alpha = M5_alpha,
+                                                                   beta = M5_beta))) 
                                          
     
+    M6_p_bar = exp(-tau * M6_fit$estimate[1] + M6_fit$estimate[2] * x_valid) / 
+      (1 + exp(-tau * M6_fit$estimate[1] + M6_fit$estimate[2] * x_valid))
+    M6_alpha = M6_p_bar /  M6_fit$estimate[3]
+    M6_beta = (1 - M6_p_bar) / M6_fit$estimate[3]
+    
     zth_results[6] = zth_results[6] + sum(log(x_prob)) - sum(log(extraDistr::dbbinom(x = x_valid, size = num_perch,
-                                                                   alpha = M6_fit$estimate[1],
-                                                                   beta = M6_fit$estimate[2])))
+                                                                   alpha = M6_alpha,
+                                                                   beta = M6_beta)))
                                          
     
   }
   
-  return_list = vector("list", length = 3) # Initialise a list to return from the function.
+  return_list = vector("list", length = 4) # Initialise a list to return from the function.
 
   # Save the return values in a set order:
   # @pos1: the mean KLD for the current fit.
@@ -260,6 +317,8 @@ AIC_mat = matrix(unlist(AIC_true_parallel_results), ncol = 6, byrow = TRUE)
 # Calculate the AIC delta values. 
 AIC_mat_delta = AIC_mat - rowMins(AIC_mat)
 AIC_estimate_mat_delta = AIC_estimate_mat - rowMins(AIC_estimate_mat)
+
+#colmeans(AIC_mat_delta)
 
 models_selected = list() # Create a list of models selected from each fit. 
 
