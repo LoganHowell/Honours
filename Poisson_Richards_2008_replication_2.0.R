@@ -17,9 +17,10 @@ tau = 10 # Number of minutes of observation.
 shade_stat = 0 # The status of the shading exposure, st. 0 = non-shaded, 1 = shaded. 
 alpha = 0.5 # The arrival rate for one-flowered plants. 
 alpha_shade = -0.05 # The constant component on the dummy variable associated with shaded plants. 
+beta = 0.8
 phi = 0.1 # The over-dispersion factor. 
 r = 10 # The number of plants per 
-num_reps = 600 # The number of model fits to be performed. 
+num_reps = 100 # The number of model fits to be performed. 
 Z = 10000 # The number of new points to use in calculation of cumulative IC (for each treatment). 
 AIC_threshold = 6 # The threshold for delta_AIC-based selection. 
 
@@ -66,63 +67,80 @@ simplicity_key = matrix(
 
 
 
-LL_M1 = function(pars, x)
+LL_M1 = function(pars, x_arrivals)
 {
-  return(sum(x * log(pars[1] * tau) - pars[1] * tau - log(factorial(x))))
+  
+  lambda = pars[1]
+  
+  return(sum(-lambda * tau + x_arrivals * log(lambda * tau) - log(factorial(x_arrivals))))
 }
 
 # @param: shade_stat is a vector of binary indicator variables determining whether
 # the plant is in a shaded spot or not. 
-LL_M2 = function(pars, x)
+LL_M2 = function(pars, x_arrivals, shade_stat_vec)
 {
-  return(sum(x * log((pars[1] + pars[2] * shade_stat) * tau) - (pars[1] + pars[2] * shade_stat) * tau - log(factorial(x))))
+  lambda = pars[1] + pars[2] * shade_stat_vec
+  
+  return(sum(-lambda * tau + x_arrivals * log(lambda * tau) - log(factorial(x_arrivals))))
 }
 
-LL_M3 = function(pars, x)
+LL_M3 = function(pars, x_arrivals, y_flower_number)
 {
-  return(sum(x * log(pars[1] * x * tau) - pars[1] * x * tau - log(factorial(x))))  
+  
+  lambda = pars[1] * y_flower_number
+  
+  return(sum(-lambda * tau + x_arrivals * log(lambda * tau) - log(factorial(x_arrivals))))  
 }
 
-LL_M4 = function(pars, x)
+LL_M4 = function(pars, x_arrivals, y_flower_number, shade_stat_vec)
 {
-  return(sum(x * log((pars[1] + pars[2] * shade_stat) * x * tau) - 
-               ((pars[1] + pars[2] * shade_stat) * x * tau) - log(factorial(x))))
+  lambda = (pars[1] + pars[2] * shade_stat_vec) * y_flower_number
+  
+  return(sum(-lambda * tau + x_arrivals * log(lambda * tau) - log(factorial(x_arrivals))))
 }
 
-# Check complete:
-LL_M5 = function(pars, x)
+
+LL_M5 = function(pars, x_arrivals)
 {
-  a = pars[1] / pars[2]
+  lambda = pars[1]
+  
+  a = lambda / pars[2]
   b = 1 / pars[2]
   
-  return(sum(lgamma(x + a) - lgamma(x + 1) - lgamma(a) + a * log((b / tau) / (1 + b/tau)) + x * log(1 / (1 + (b / tau)))))
+  return(sum(lgamma(x_arrivals + a) - lgamma(x_arrivals + 1) - lgamma(a) + a * log((b / tau) / (1 + b / tau)) + x_arrivals * log(1 / (1 + (b / tau)))))
 }
 
 
-LL_M6 = function(pars, x)
+LL_M6 = function(pars, x_arrivals, shade_stat_vec)
 {
-  a = (pars[1] + pars[2] * shade_stat) / pars[3]
+  lambda = pars[1] + pars[2] * shade_stat_vec
+  
+  a = lambda / pars[3]
   b = 1 / pars[3]
    
-  return(sum(lgamma(x + a) - lgamma(x + 1) - lgamma(a) + a * log((b / tau) / (1 + b/tau)) + x * log(1 / (1 + (b / tau)))))  
+  return(sum(lgamma(x_arrivals + a) - lgamma(x_arrivals + 1) - lgamma(a) + a * log((b / tau) / (1 + b / tau)) + x_arrivals * log(1 / (1 + (b / tau)))))
 }
 
 
-LL_M7 = function(pars, x)
+LL_M7 = function(pars, x_arrivals, y_flower_number)
 {
-  a = (pars[1] * x) / pars[2]
+  lambda = pars[1] * y_flower_number
+  
+  a = lambda / pars[2]
   b = 1 / pars[2]
 
-  return(sum(lgamma(x + a) - lgamma(x + 1) - lgamma(a) + a * log((b / tau) / (1 + b / tau)) + x * log(1 / (1 + (b / tau)))))
+  return(sum(lgamma(x_arrivals + a) - lgamma(x_arrivals + 1) - lgamma(a) + a * log((b / tau) / (1 + b / tau)) + x_arrivals * log(1 / (1 + (b / tau)))))
 }
 
 
-LL_M8 = function(pars, x)
+LL_M8 = function(pars, x_arrivals, y_flower_number, shade_stat_vec)
 {
-  a = ((pars[1] + pars[2] * shade_stat) * x) / pars[3]
+  lambda = (pars[1] + pars[2] * shade_stat_vec) * y_flower_number
+  
+  a = lambda / pars[3]
   b = 1 / pars[3]
   
-  return(sum(lgamma(x + a) - lgamma(x + 1) - lgamma(a) + a * log((b / tau) / (1 + b / tau)) + x * log(1 / (1 + (b / tau)))))
+  return(sum(lgamma(x_arrivals + a) - lgamma(x_arrivals + 1) - lgamma(a) + a * log((b / tau) / (1 + b / tau)) + x_arrivals * log(1 / (1 + (b / tau)))))
 }
 
 
@@ -140,25 +158,23 @@ process_rep = function(i)
   truth_set = rep(0, times = length(flower_number))
   
   # Prevent the optimisation routines trying to incorporate lgamma(0) or log(0) and then failing: 
-  while(0 %in% truth_set)
-  {
+  #while(0 %in% truth_set)
+  #{
     for(j in 1:length(flower_number))
     {
       b = 1 / phi
       truth_set[j] = stats::rnbinom(n = 1, size = lambda_true[j] / phi, prob = (b / tau) / (1 + b / tau))
     }
-  }
+  #}
 
-  print(i)
-
-  M1_fit = maxLik::maxLik(logLik = LL_M1, start = c(1), constraints = list(ineqA = A_LL_M1, ineqB = B_LL_M1), method = "BFGS", x = truth_set)
-  M2_fit = maxLik::maxLik(logLik = LL_M2, start = c(1,1), constraints = list(ineqA = A_LL_M2, ineqB = B_LL_M2), x = truth_set)
-  M3_fit = maxLik::maxLik(logLik = LL_M3, start = c(1), constraints = list(ineqA = A_LL_M3, ineqB = B_LL_M3), x = truth_set, method = "BFGS")
-  M4_fit = maxLik::maxLik(logLik = LL_M4, start = c(1,1), constraints = list(ineqA = A_LL_M4, ineqB = B_LL_M4), x = truth_set)
-  M5_fit = maxLik::maxLik(logLik = LL_M5, start = c(1,1), constraints = list(ineqA = A_LL_M5, ineqB = B_LL_M5), x = truth_set)
-  M6_fit = maxLik::maxLik(logLik = LL_M6, start = c(1,1,1), constraints = list(ineqA = A_LL_M6, ineqB = B_LL_M6), x = truth_set)
-  M7_fit = maxLik::maxLik(logLik = LL_M7, start = c(1,1), constraints = list(ineqA = A_LL_M7, ineqB = B_LL_M7), x = truth_set)
-  M8_fit = maxLik::maxLik(logLik = LL_M8, start = c(1,1,1), constraints = list(ineqA = A_LL_M8, ineqB = B_LL_M8), x = truth_set)
+  M1_fit = maxLik::maxLik(logLik = LL_M1, start = c(1), constraints = list(ineqA = A_LL_M1, ineqB = B_LL_M1), method = "BFGS", x_arrivals = truth_set)
+  M2_fit = maxLik::maxLik(logLik = LL_M2, start = c(1,1), constraints = list(ineqA = A_LL_M2, ineqB = B_LL_M2), x_arrivals = truth_set, shade_stat_vec = shade_stat)
+  M3_fit = maxLik::maxLik(logLik = LL_M3, start = c(1), constraints = list(ineqA = A_LL_M3, ineqB = B_LL_M3), method = "BFGS", x_arrivals = truth_set, y_flower_number = flower_number)
+  M4_fit = maxLik::maxLik(logLik = LL_M4, start = c(1,1), constraints = list(ineqA = A_LL_M4, ineqB = B_LL_M4), x_arrivals = truth_set, y_flower_number = flower_number, shade_stat_vec = shade_stat)
+  M5_fit = maxLik::maxLik(logLik = LL_M5, start = c(1,1), constraints = list(ineqA = A_LL_M5, ineqB = B_LL_M5), x_arrivals = truth_set)
+  M6_fit = maxLik::maxLik(logLik = LL_M6, start = c(1,1,1), constraints = list(ineqA = A_LL_M6, ineqB = B_LL_M6), x_arrivals = truth_set, shade_stat_vec = shade_stat)
+  M7_fit = maxLik::maxLik(logLik = LL_M7, start = c(1,1), constraints = list(ineqA = A_LL_M7, ineqB = B_LL_M7), x_arrivals = truth_set, y_flower_number = flower_number)
+  M8_fit = maxLik::maxLik(logLik = LL_M8, start = c(1,1,1), constraints = list(ineqA = A_LL_M8, ineqB = B_LL_M8), x_arrivals = truth_set, y_flower_number = flower_number, shade_stat_vec = shade_stat)
   
   AIC_results = rep(0, times = 8)
   
@@ -173,57 +189,62 @@ process_rep = function(i)
   
   zth_results = rep(0, times = 8)
   
+  c = 0 # Initialise a value to estimate the contstant, c. 
+  
   for(z in 1:Z)
   {
     
     # Generate the i'th "truth" dataset: 
     x_valid = rep(0, times = length(flower_number))
     x_prob = rep(0, times = length(flower_number))
-    
-    # Prevent the optimisation routines trying to incorporate lgamma(0) or log(0) and then failing: 
- 
+  
     b =  1 / phi 
     
     x_valid = stats::rnbinom(n = length(flower_number), size = lambda_true / phi, prob = (b / tau) / (1 + b / tau))
     x_prob = stats::dnbinom(x = x_valid, size = lambda_true / phi, prob = (b / tau) / (1 + b / tau))
     
-    c = sum((x_prob) * log(x_prob))
+    c = c + sum(log(x_prob))
     
     # Calculate the KLD values themselves: 
-    zth_results[1] = zth_results[1] + sum(log(x_prob)) - sum(log(dpois(x = x_valid, lambda = M1_fit$estimate[1] * tau)))
+    
+    M1_lambda = M1_fit$estimate[1]
+    zth_results[1] = zth_results[1] + sum(log(x_prob)) - sum(log(dpois(x = x_valid, lambda = M1_lambda * tau)))
     
     
-    zth_results[2] = zth_results[2] + sum(log(x_prob)) - sum(log(dpois(x = x_valid, lambda = (M2_fit$estimate[1] + M2_fit$estimate[2] * shade_stat) * tau)))
+    M2_lambda = M2_fit$estimate[1] + M2_fit$estimate[2] * shade_stat
+    zth_results[2] = zth_results[2] + sum(log(x_prob)) - sum(log(dpois(x = x_valid, lambda = M2_lambda * tau)))
     
     
-    zth_results[3] = zth_results[3] + sum(log(x_prob)) - sum(log(dpois(x = x_valid, lambda = M3_fit$estimate[1] * x_valid * tau)))
+    M3_lambda = M3_fit$estimate[1] * flower_number
+    zth_results[3] = zth_results[3] + sum(log(x_prob)) - sum(log(dpois(x = x_valid, lambda = M3_lambda * tau)))
     
     
-    zth_results[4] = zth_results[4] + sum(log(x_prob)) - sum(log(dpois(x = x_valid, lambda = (M4_fit$estimate[1] + M4_fit$estimate[2] * shade_stat) * x * tau)))
+    M4_lambda = (M4_fit$estimate[1] + M4_fit$estimate[2] * shade_stat) * flower_number
+    zth_results[4] = zth_results[4] + sum(log(x_prob)) - sum(log(dpois(x = x_valid, lambda = M4_lambda * tau)))
     
     
-    size_5 = (M5_fit$estimate[1] * tau) / M5_fit$estimate[2]
+    size_5 = (M5_fit$estimate[1]) / M5_fit$estimate[2]
     b_5 = 1 / M5_fit$estimate[2]
     prob_5 = (b_5 / tau) / (1 + b_5 / tau) 
 
     zth_results[5] = zth_results[5] + sum(log(x_prob)) - sum(log(stats::dnbinom(x = x_valid, size = size_5, prob = prob_5)))
 
 
-    size_6 = ((M6_fit$estimate[1] + M6_fit$estimate[2] * shade_stat) * tau) / M6_fit$estimate[3]
+    size_6 = ((M6_fit$estimate[1] + M6_fit$estimate[2] * shade_stat)) / M6_fit$estimate[3]
     b_6 = 1 / M6_fit$estimate[3]
     prob_6 = (b_6 / tau) / (1 + b_6 / tau) 
     
     zth_results[6] = zth_results[6] + sum(log(x_prob)) - sum(log(stats::dnbinom(x = x_valid, size = size_6, prob = prob_6)))
     
     
-    size_7 = (M7_fit$estimate[1] * x * tau) / M7_fit$estimate[2]
+    size_7 = (M7_fit$estimate[1] * flower_number) / M7_fit$estimate[2]
     b_7 = 1 / M7_fit$estimate[2]
     prob_7 = (b_7 / tau) / (1 + b_7 / tau) 
     
     zth_results[7] = zth_results[7] + sum(log(x_prob)) - sum(log(stats::dnbinom(x = x_valid, size = size_7, prob = prob_7)))
     
     
-    size_8 = ((M8_fit$estimate[1] + M8_fit$estimate[2] * shade_stat) * x * tau) / M8_fit$estimate[3]
+    size_8 = ((M8_fit$estimate[1] + M8_fit$estimate[2] * shade_stat) * flower_number) / M8_fit$estimate[3]
     b_8 = 1 / M8_fit$estimate[3]
     prob_8 = (b_8 / tau) / (1 + b_8 / tau) 
     
@@ -239,7 +260,7 @@ process_rep = function(i)
   # @pos3: the AIC values for the current fit, calculated using model max log likelihood.
   
   return_list[[1]] = zth_results / Z
-  return_list[[2]] = 2 * (zth_results / Z - c)
+  return_list[[2]] = 2 * (zth_results / Z - c / Z)
   return_list[[3]] = AIC_results
   
   return(return_list)
@@ -270,26 +291,27 @@ KLD_mat = matrix(unlist(KLD_parallel_results), ncol = 8, byrow = TRUE)
 AIC_estimate_mat = matrix(unlist(AIC_estimate_parallel_results), ncol = 8, byrow = TRUE)
 AIC_mat = matrix(unlist(AIC_true_parallel_results), ncol = 8, byrow = TRUE)
 
-
-
 # Perform model selection based on the AIC values calculated above. 
 
 # Calculate the AIC delta values. 
 AIC_mat_delta = AIC_mat - rowMins(AIC_mat)
 AIC_estimate_mat_delta = AIC_estimate_mat - rowMins(AIC_estimate_mat)
 
-models_selected = list() # Create a list of models selected from each fit. 
+# Create a list of models selected from each fit.
+nested_models_selected = list() 
+delta_models_selected = list()
 
 for(i in 1:nrow(AIC_mat_delta))
 {
   current_row = AIC_mat_delta[i, ] # Extract the i'th row. 
   
   # Determine which models are below the delta-AIC threshold. 
-  models_selected[[i]] = which(current_row < AIC_threshold) 
+  nested_models_selected[[i]] = which(current_row < AIC_threshold) 
+  delta_models_selected[[i]] = which(current_row < AIC_threshold)
   
-  AIC_values = current_row[c(models_selected[[i]])]
+  AIC_values = current_row[c(nested_models_selected[[i]])]
   
-  ordered_deltas = models_selected[[i]][order(AIC_values, decreasing = FALSE)]
+  ordered_deltas = nested_models_selected[[i]][order(AIC_values, decreasing = FALSE)]
   final_list = ordered_deltas
   
   for(j in 1:length(ordered_deltas))
@@ -304,20 +326,23 @@ for(i in 1:nrow(AIC_mat_delta))
   }
   
   # Overwrite the original list with the updated list (nested models removed)
-  models_selected[[i]] = final_list
+  nested_models_selected[[i]] = final_list
 }
 
 # Create an empty array to store the number of times each model is selected via the threshold selection rule. 
-selection_times = rep(0, times = 8)
+nested_selection_times = rep(0, times = 8)
+delta_selection_times = rep(0, times = 8)
 
-for(i in 1:length(models_selected))
+for(i in 1:length(nested_models_selected))
 {
   # Increment the selection counts for the models selected in the i'th fit:
-  selection_times[models_selected[[i]]] = selection_times[models_selected[[i]]] + 1
+  nested_selection_times[nested_models_selected[[i]]] = nested_selection_times[nested_models_selected[[i]]] + 1
+  delta_selection_times[delta_models_selected[[i]]] = delta_selection_times[delta_models_selected[[i]]] + 1
 }
 
 # Calculate the proportion of times each model was selected. 
-selection_prop = selection_times / num_reps
+nested_selection_prop = nested_selection_times / num_reps
+delta_selection_prop = delta_selection_times / num_reps
 
 # Calculate mean KLD and the associated standard errors. 
 EKLD = data.frame(
