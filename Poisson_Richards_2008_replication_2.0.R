@@ -9,9 +9,15 @@ library(stats4)
 library(fAsianOptions)
 library(maxLik)
 library(matrixStats)
-library(MASS)
-
-
+library(ramify)
+library(purrr)
+library(doSNOW)
+library(latex2exp)
+library(ggrepel)
+library(data.table)
+library(plotly)
+library(cowplot)
+library(xlsx)
 
 tau = 10 # Number of minutes of observation. 
 shade_stat = 0 # The status of the shading exposure, st. 0 = non-shaded, 1 = shaded. 
@@ -19,10 +25,11 @@ alpha = 0.5 # The arrival rate for one-flowered plants.
 alpha_shade = -0.05 # The constant component on the dummy variable associated with shaded plants. 
 beta = 0.8
 phi = 0.1 # The over-dispersion factor. 
-r = 10 # The number of plants per 
-num_reps = 100 # The number of model fits to be performed. 
+r = 5 # The number of plants per replicate. 
+num_reps = 1000 # The number of model fits to be performed. 
 Z = 10000 # The number of new points to use in calculation of cumulative IC (for each treatment). 
 AIC_threshold = 6 # The threshold for delta_AIC-based selection. 
+# v_tilda = 2 # Set the variance inflation factor manually. 
 
 
 # Constraint sets for later optimisation:
@@ -187,6 +194,28 @@ process_rep = function(i)
   AIC_results[7] = -2 * M7_fit$maximum + 2 * length(M7_fit$estimate)
   AIC_results[8] = -2 * M8_fit$maximum + 2 * length(M8_fit$estimate)
   
+  
+  # Perform the required QAIC calculations: 
+  
+  QAIC_results = rep(0, times = 8)
+  
+  saturated_log_likelihood = exp(-truth_set) * (truth_set ^ truth_set) / factorial(truth_set)
+  
+  saturated_log_likelihood = sum(log(saturated_log_likelihood))
+  
+  df = length(shade_stat) - 2
+  v_tilda = (2 / df) * (saturated_log_likelihood - M4_fit$maximum)
+  
+  QAIC_results[1] = - (2 / v_tilda) * M1_fit$maximum + 2 * length(M1_fit$estimate)
+  QAIC_results[2] = - (2 / v_tilda) * M2_fit$maximum + 2 * length(M2_fit$estimate)
+  QAIC_results[3] = - (2 / v_tilda) * M3_fit$maximum + 2 * length(M3_fit$estimate)
+  QAIC_results[4] = - (2 / v_tilda) * M4_fit$maximum + 2 * length(M4_fit$estimate)
+  QAIC_results[5] = - (2 / v_tilda) * M5_fit$maximum + 2 * length(M5_fit$estimate)
+  QAIC_results[6] = - (2 / v_tilda) * M6_fit$maximum + 2 * length(M6_fit$estimate)
+  QAIC_results[7] = - (2 / v_tilda) * M7_fit$maximum + 2 * length(M7_fit$estimate)
+  QAIC_results[8] = - (2 / v_tilda) * M8_fit$maximum + 2 * length(M8_fit$estimate)
+  
+  
   zth_results = rep(0, times = 8)
   
   c = 0 # Initialise a value to estimate the contstant, c. 
@@ -252,7 +281,14 @@ process_rep = function(i)
   }
 
   
-  return_list = vector("list", length = 3) # Initialise a list to return from the function.
+  incorrect_inference = rep(0, length = 8)
+  
+  incorrect_inference[[2]] = as.integer(M2_fit$estimate[[2]] > 0)
+  incorrect_inference[[4]] = as.integer(M4_fit$estimate[[2]] > 0)
+  incorrect_inference[[6]] = as.integer(M6_fit$estimate[[2]] > 0)
+  incorrect_inference[[8]] = as.integer(M8_fit$estimate[[2]] > 0)
+  
+  return_list = vector("list", length = 5) # Initialise a list to return from the function.
   
   # Save the return values in a set order:
   # @pos1: the mean KLD for the current fit.
@@ -262,6 +298,8 @@ process_rep = function(i)
   return_list[[1]] = zth_results / Z
   return_list[[2]] = 2 * (zth_results / Z - c / Z)
   return_list[[3]] = AIC_results
+  return_list[[4]] = QAIC_results
+  return_list[[5]] = incorrect_inference
   
   return(return_list)
 }
@@ -279,70 +317,228 @@ opts = list(progress = progress)
 parallel_results <- foreach(i=1:num_reps, 
                             .options.snow = opts) %dopar% process_rep(i)
 
-close(pb)
-stopCluster(cluster)
-
 KLD_parallel_results = purrr::map(parallel_results, 1)
 AIC_estimate_parallel_results = purrr::map(parallel_results, 2)
 AIC_true_parallel_results = purrr::map(parallel_results, 3)
-
+QAIC_true_parallel_results = purrr::map(parallel_results, 4)
+incorrect_inference_results = purrr::map(parallel_results, 5)
 
 KLD_mat = matrix(unlist(KLD_parallel_results), ncol = 8, byrow = TRUE)
 AIC_estimate_mat = matrix(unlist(AIC_estimate_parallel_results), ncol = 8, byrow = TRUE)
 AIC_mat = matrix(unlist(AIC_true_parallel_results), ncol = 8, byrow = TRUE)
+QAIC_mat = matrix(unlist(QAIC_true_parallel_results), ncol = 8, byrow = TRUE)
+inference_matrix =  matrix(unlist(incorrect_inference_results), ncol = 8, byrow = TRUE)
+
+
+xlsx::write.xlsx(AIC_mat, file = "poisson_scenario_f.xlsx", sheetName = "AIC", row.names = FALSE, col.names = FALSE)
+xlsx::write.xlsx(KLD_mat, file = "poisson_scenario_f.xlsx", sheetName = "KLD_estimates", row.names = FALSE, col.names = FALSE, append = TRUE)
+xlsx::write.xlsx(AIC_estimate_mat, file = "poisson_scenario_f.xlsx", sheetName = "AIC_KLD_estimates", row.names = FALSE, col.names = FALSE, append = TRUE)
+xlsx::write.xlsx(QAIC_mat, file = "poisson_scenario_f.xlsx", sheetName = "QAIC", row.names = FALSE, col.names = FALSE, append = TRUE)
+xlsx::write.xlsx(incorrect_inference_results, file = "poisson_scenario_f.xlsx", sheetName = "incorrect_inference", row.names = FALSE, col.names = FALSE, append = TRUE)
+
+
+
+
+
+
+QAIC_mat = QAIC_mat[, 1:4]
+
+
+
+
+
+
+
+colmeans(AIC_mat)
+colmeans(AIC_estimate_mat)
+colmeans(QAIC_mat)
 
 # Perform model selection based on the AIC values calculated above. 
 
 # Calculate the AIC delta values. 
 AIC_mat_delta = AIC_mat - rowMins(AIC_mat)
 AIC_estimate_mat_delta = AIC_estimate_mat - rowMins(AIC_estimate_mat)
+QAIC_mat_delta = QAIC_mat - rowMins(QAIC_mat)
 
-# Create a list of models selected from each fit.
-nested_models_selected = list() 
-delta_models_selected = list()
 
-for(i in 1:nrow(AIC_mat_delta))
+
+
+prob_model_selected = function(AIC_threshold, QAIC_threshold, AIC_mat_delta, QAIC_mat_delta)
 {
-  current_row = AIC_mat_delta[i, ] # Extract the i'th row. 
+  # Create a list of models selected from each fit.
+  nested_AIC_models_selected = list() 
+  delta_AIC_models_selected = list()
+  delta_QAIC_models_selected = list()
+  nested_QAIC_models_selected = list()
   
-  # Determine which models are below the delta-AIC threshold. 
-  nested_models_selected[[i]] = which(current_row < AIC_threshold) 
-  delta_models_selected[[i]] = which(current_row < AIC_threshold)
-  
-  AIC_values = current_row[c(nested_models_selected[[i]])]
-  
-  ordered_deltas = nested_models_selected[[i]][order(AIC_values, decreasing = FALSE)]
-  final_list = ordered_deltas
-  
-  for(j in 1:length(ordered_deltas))
+  for(i in 1:nrow(AIC_mat_delta))
   {
-    removal_list = intersect(which(simplicity_key[ordered_deltas[j], ] == 1), ordered_deltas[j:length(ordered_deltas)])
+    # Extract the i'th rows. 
+    current_AIC_row = AIC_mat_delta[i, ] 
+    current_QAIC_row = QAIC_mat_delta[i, ]
     
-    # If a more complicated model has a greater AIC value:
-    if(length(removal_list) > 0)
+    # Determine which models are below the delta-AIC threshold. 
+    nested_AIC_models_selected[[i]] = which(current_AIC_row < AIC_threshold) 
+    delta_AIC_models_selected[[i]] = which(current_AIC_row < AIC_threshold)
+    delta_QAIC_models_selected[[i]] = which(current_QAIC_row < QAIC_threshold)
+    nested_QAIC_models_selected[[i]] = which(current_QAIC_row < QAIC_threshold)
+    
+    AIC_values = current_AIC_row[c(nested_AIC_models_selected[[i]])]
+    QAIC_values = current_QAIC_row[c(nested_QAIC_models_selected[[i]])]
+    
+    ordered_AIC_deltas = nested_AIC_models_selected[[i]][order(AIC_values, decreasing = FALSE)]
+    ordered_QAIC_deltas = nested_QAIC_models_selected[[i]][order(QAIC_values, decreasing = FALSE)]
+    
+    
+    final_AIC_list = ordered_AIC_deltas
+    final_QAIC_list = ordered_QAIC_deltas
+    
+    for(j in 1:length(ordered_AIC_deltas))
     {
-      final_list = final_list[!final_list %in% removal_list]
+      AIC_removal_list = intersect(which(simplicity_key[ordered_AIC_deltas[j], ] == 1), ordered_AIC_deltas[j:length(ordered_AIC_deltas)])
+      QAIC_removal_list = intersect(which(simplicity_key[ordered_QAIC_deltas[j], ] == 1), ordered_QAIC_deltas[j:length(ordered_QAIC_deltas)])
+      
+      
+      # If a more complicated model has a greater AIC value:
+      if(length(AIC_removal_list) > 0)
+      {
+        final_AIC_list = final_AIC_list[!final_AIC_list %in% AIC_removal_list]
+      }
+      
+      if(length(QAIC_removal_list) > 0)
+      {
+        final_QAIC_list = final_QAIC_list[!final_QAIC_list %in% QAIC_removal_list]
+      }
     }
+    
+    # Overwrite the original list with the updated list (nested models removed)
+    nested_AIC_models_selected[[i]] = final_AIC_list
+    nested_QAIC_models_selected[[i]] = final_QAIC_list
   }
   
-  # Overwrite the original list with the updated list (nested models removed)
-  nested_models_selected[[i]] = final_list
+  # Create an empty array to store the number of times each model is selected via the threshold selection rule. 
+  nested_AIC_selection_times = rep(0, times = 8)
+  delta_AIC_selection_times = rep(0, times = 8)
+  nested_QAIC_selection_times = rep(0, times = 4)
+  delta_QAIC_selection_times = rep(0, times = 4)
+  
+  for(i in 1:length(nested_AIC_models_selected))
+  {
+    # Increment the selection counts for the models selected in the i'th fit:
+    nested_AIC_selection_times[nested_AIC_models_selected[[i]]] = nested_AIC_selection_times[nested_AIC_models_selected[[i]]] + 1
+    delta_AIC_selection_times[delta_AIC_models_selected[[i]]] = delta_AIC_selection_times[delta_AIC_models_selected[[i]]] + 1
+    
+    nested_QAIC_selection_times[delta_QAIC_models_selected[[i]]] = nested_QAIC_selection_times[delta_QAIC_models_selected[[i]]] + 1
+    delta_QAIC_selection_times[delta_QAIC_models_selected[[i]]] = delta_QAIC_selection_times[delta_QAIC_models_selected[[i]]] + 1
+  }
+  
+  # Calculate the proportion of times each model was selected. 
+  nested_AIC_selection_prop = nested_AIC_selection_times / num_reps
+  delta_AIC_selection_prop = delta_AIC_selection_times / num_reps
+  
+  nested_QAIC_selection_prop = nested_QAIC_selection_times / num_reps
+  delta_QAIC_selection_prop = delta_QAIC_selection_times / num_reps
+  
+  # AIC_table = data.frame(
+  #   model = paste("M", seq(1:6), " (AIC)", sep = ""),
+  #   delta_AIC = delta_AIC_selection_prop
+  #   #nested_AIC = nested_AIC_selection_prop
+  # )
+  # 
+  # QAIC_table = data.frame(
+  #   model = paste("M", seq(1:3), " (QAIC)", sep = ""),
+  #   delta_QAIC = delta_QAIC_selection_prop
+  #   #nested_QAIC = nested_QAIC_selection_prop
+  # )
+  
+  return_list = vector("list", length = 2) # Initialise a list to return from the function.
+  
+  return_list[[1]] = delta_AIC_selection_prop
+  return_list[[2]] = delta_QAIC_selection_prop
+  
+  return(return_list)
 }
 
-# Create an empty array to store the number of times each model is selected via the threshold selection rule. 
-nested_selection_times = rep(0, times = 8)
-delta_selection_times = rep(0, times = 8)
+threshold_sequence = seq(from = 0, to = 8, by = 0.5)
 
-for(i in 1:length(nested_models_selected))
+threshold_sequence = seq(from = 0, to = 8, by = 0.5)
+
+AIC_table = data.frame(
+  model = paste("(AIC) M", seq(1:8), sep = "")
+)
+
+QAIC_table = data.frame(
+  model = paste("(QAIC) M", seq(1:4), sep = "")
+)
+
+for(i in 1:length(threshold_sequence))
 {
-  # Increment the selection counts for the models selected in the i'th fit:
-  nested_selection_times[nested_models_selected[[i]]] = nested_selection_times[nested_models_selected[[i]]] + 1
-  delta_selection_times[delta_models_selected[[i]]] = delta_selection_times[delta_models_selected[[i]]] + 1
+  
+  selection_output = prob_model_selected(AIC_threshold = threshold_sequence[i],
+                                         QAIC_threshold = threshold_sequence[i],
+                                         AIC_mat_delta = AIC_mat_delta,
+                                         QAIC_mat_delta = QAIC_mat_delta)
+  
+  AIC_table[i + 1] = selection_output[[1]]
+  QAIC_table[i + 1] = selection_output[[2]]
 }
 
-# Calculate the proportion of times each model was selected. 
-nested_selection_prop = nested_selection_times / num_reps
-delta_selection_prop = delta_selection_times / num_reps
+colnames(AIC_table)[2:ncol(AIC_table)] = threshold_sequence
+colnames(QAIC_table)[2:ncol(QAIC_table)] = threshold_sequence
+
+AIC_table_wide = gather(data = AIC_table, key = "Threshold", value = "Probability model is selected", 2:18)
+QAIC_table_wide = gather(data = QAIC_table, key = "Threshold", value = "Probability model is selected", 2:18)
+
+AIC_table_wide = AIC_table_wide[AIC_table_wide$model %in% c("(AIC) M3", "(AIC) M4", "(AIC) M7","(AIC) M8"), ]
+QAIC_table_wide = QAIC_table_wide[QAIC_table_wide$model %in% c("(QAIC) M3", "(QAIC) M4"), ]
+
+
+plot = ggplot() + 
+  geom_point(data = AIC_table_wide, mapping = aes(x = Threshold, y = `Probability model is selected`, shape = model, size = 1)) + 
+  geom_point(data = QAIC_table_wide, mapping = aes(x = Threshold, y = `Probability model is selected`, shape = model, size = 1)) +
+  scale_shape_manual(values = c(0,15,1,19,1,19)) +
+  guides(shape = guide_legend(override.aes = list(size=c(5,5,5,5,2,2))))
+
+plot$layers[[1]]$aes_params$size = 5 # change the size of the geom_line layer from 1 to 0.5
+plot$layers[[2]]$aes_params$size = 3   # change the size of the geom_point layer from 3 to 1
+plot
+
+full_plot = ggplot() + 
+  geom_point(data = AIC_table_wide, mapping = aes(x = Threshold, y = `Probability model is selected`, shape = model, size = 1)) + 
+  geom_point(data = QAIC_table_wide, mapping = aes(x = Threshold, y = `Probability model is selected`, shape = model, size = 1)) +
+  scale_shape_manual(values = c(0,15,1,19,1,19)) +
+  theme(legend.position="none")
+
+full_plot$layers[[1]]$aes_params$size = 5 # change the size of the geom_line layer from 1 to 0.5
+full_plot$layers[[2]]$aes_params$size = 3   # change the size of the geom_point layer from 3 to 1
+
+plot_AIC = ggplot() + 
+  geom_point(data = AIC_table_wide, mapping = aes(x = Threshold, y = `Probability model is selected`, shape = model, size = 1)) +
+  scale_shape_manual(values = c(0,15,1,19), name = "AIC") +
+  guides(shape = guide_legend(override.aes = list(size=c(5,5,5,5,5,5))))
+
+plot_AIC$layers[[1]]$aes_params$size = 5 # change the size of the geom_line layer from 1 to 0.5
+
+
+plot_QAIC = ggplot() + 
+  geom_point(data = QAIC_table_wide, mapping = aes(x = Threshold, y = `Probability model is selected`, shape = model, size = 1)) +
+  scale_shape_manual(values = c(1,19), name = "QAIC") +
+  guides(shape = guide_legend(override.aes = list(size=c(2,2,2))))
+
+plot_QAIC$layers[[1]]$aes_params$size = 3 # change the size of the geom_line layer from 1 to 0.5
+
+plot_grid(
+  full_plot
+  , plot_grid(
+    get_legend(plot_AIC)
+    , get_legend(plot_QAIC)
+    , nrow = 1
+  )
+  , nrow = 2
+  , rel_heights = c(8,2)
+)
+
+
 
 # Calculate mean KLD and the associated standard errors. 
 EKLD = data.frame(
